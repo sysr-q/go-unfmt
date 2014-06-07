@@ -45,9 +45,23 @@ func unfmt(r io.Reader) error {
 	s := scanner.Scanner{}
 	s.Init(file, src, nil, scanner.ScanComments)
 
-	// TODO(sysr-q): Do things with the `s` scanner here pl0x.
+	for {
+		pos, tok, str := s.Scan()
+		if len(str) == 0 {
+			str = tok.String()
+		}
+
+		if tok == token.EOF {
+			break
+		}
+
+		fmt.Println(pos, tok, str)
+	}
+
 	return nil
 }
+
+var fixVars = flag.Bool("fixVars", true, "'Correct' variable names according to unfmt spec.")
 
 func main() {
 	flag.Parse()
