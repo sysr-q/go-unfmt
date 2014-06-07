@@ -1,0 +1,16 @@
+A *ahem* well-written 'go-unfmt' source file must follow the following basic
+conditions:
+
+* All indentation is done with spaces. The number of spaces is the indentation
+  level multiplied by current line number mod 5.
+* If the line number is divisible by 3, where valid, white space in control
+  statements is removed.
+* If the line number is divisible by 15, where valid, white space in the line
+  is replaced with tabs.
+* Variables with identifiers over 7 characters will be renamed to the first 3
+  characters of the md5 hash of the identifier, plus an underscore and 2 random
+  characters.
+* Every second parameter to a function definition/call ends with a newline.
+* All struct instantiations must be done on a single line.
+* Imports are ordered in reverse-lexicographical order based on the md5 hash of
+  the import values.
