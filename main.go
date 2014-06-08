@@ -26,54 +26,85 @@ package main
 import (
 	"flag"
 	"fmt"
-	"go/scanner"
+	"go/ast"
 	"go/token"
-	"io"
+	"go/parser"
 	"io/ioutil"
 	"os"
 )
 
-func unfmt(r io.Reader) error {
-	src, err := ioutil.ReadAll(r)
-	if err != nil {
-		return err
-	}
-
-	fset := token.NewFileSet()
-	file := fset.AddFile("<stdin>", fset.Base(), len(src))
-
-	s := scanner.Scanner{}
-	s.Init(file, src, nil, scanner.ScanComments)
-
-	for {
-		pos, tok, str := s.Scan()
-		if len(str) == 0 {
-			str = tok.String()
-		}
-
-		if tok == token.EOF {
-			break
-		}
-
-		fmt.Println(pos, tok, str)
-	}
-
+func unfmtNode(node ast.Node) error {
 	return nil
 }
 
-var fixVars = flag.Bool("fixVars", true, "'Correct' variable names according to unfmt spec.")
+func unfmt(src []byte, srcName string) (<-chan string, <-chan error, <-chan struct{}) {
+	var (
+		srcOut = make(chan string)
+		srcErr = make(chan error)
+		done   = make(chan struct{})
+	)
+
+	go func() {
+		defer close(done)
+
+		fset := token.NewFileSet()
+		fset.AddFile("<stdin>", fset.Base(), len(src))
+
+		astree, err := parser.ParseFile(fset, srcName, src, parser.ParseComments | parser.DeclarationErrors | parser.AllErrors)
+		if err != nil {
+			srcErr <- err
+			return
+		}
+
+		// TODO(cyphar): Replace with proper unfmt-ing code
+		srcOut <- fmt.Sprintln(astree)
+	}()
+
+	return srcOut, srcErr, done
+}
+
+var (
+	oVars       = flag.Bool("fix-vars", false, "'Correct' variable names according to the unfmt spec. -- NYI")
+	oIndent     = flag.Bool("fix-indent", true, "'Correct' indentation according to the unfmt spec. -- NYI")
+	oWhitespace = flag.Bool("fix-whitespace", true, "'Correct' whitespace in control structures according to the unfmt spec. -- NYI")
+	oParameters = flag.Bool("fix-parameters", true, "'Correct' function parameters according to the unfmt spec. -- NYI")
+	oStruct     = flag.Bool("fix-structs", true, "'Correct' struct instantiations according to the unfmt spec. -- NYI")
+	oImports    = flag.Bool("fix-imports", true, "'Correct' imports according to the unfmt spec. -- NYI")
+)
 
 func main() {
 	flag.Parse()
 
 	for _, fname := range flag.Args() {
-		f, err := os.Open(fname)
+		goFile, err := os.Open(fname)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "go unfmt: failed to ruin the source file '%s'\n", fname)
+			fmt.Fprintf(os.Stderr, "go unfmt: failed to ruin the source file '%s': %s\n", fname, err.Error())
 			continue
 		}
-		defer f.Close()
+		defer goFile.Close()
 
-		unfmt(f)
+		goSrc, err := ioutil.ReadAll(goFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "go unfmt: failed to read the source file '%s': %s\n", fname, err.Error())
+			continue
+		}
+
+		srcChan, errChan, done := unfmt(goSrc, fname)
+
+		for {
+			select {
+			case srcToken := <-srcChan:
+				// TODO(cyphar): Replace this with proper printing code
+				fmt.Print(srcToken)
+			case err := <-errChan:
+				fmt.Fprintf(os.Stderr, "go unfmt: error encountered while ruining source file '%s': %s\n", fname, err.Error())
+				goto fail
+			case <-done:
+				goto fail
+			}
+		}
+
+		// TODO(cyphar): remove this f*kkin thing.
+		fail:
 	}
 }
