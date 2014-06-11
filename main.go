@@ -26,85 +26,58 @@ package main
 import (
 	"flag"
 	"fmt"
-	"go/ast"
-	"go/token"
+	_ "go/ast" // TODO(cyphar): use this import
 	"go/parser"
+	"go/token"
 	"io/ioutil"
 	"os"
 )
 
-func unfmtNode(node ast.Node) error {
-	return nil
-}
+func unfmt(src []byte, srcName string) (string, error) {
+	fset := token.NewFileSet()
+	fset.AddFile("<stdin>", fset.Base(), len(src))
 
-func unfmt(src []byte, srcName string) (<-chan string, <-chan error, <-chan struct{}) {
-	var (
-		srcOut = make(chan string)
-		srcErr = make(chan error)
-		done   = make(chan struct{})
-	)
+	astree, err := parser.ParseFile(fset, srcName, src, parser.ParseComments|parser.DeclarationErrors|parser.AllErrors)
+	if err != nil {
+		return "", err
+	}
 
-	go func() {
-		defer close(done)
-
-		fset := token.NewFileSet()
-		fset.AddFile("<stdin>", fset.Base(), len(src))
-
-		astree, err := parser.ParseFile(fset, srcName, src, parser.ParseComments | parser.DeclarationErrors | parser.AllErrors)
-		if err != nil {
-			srcErr <- err
-			return
-		}
-
-		// TODO(cyphar): Replace with proper unfmt-ing code
-		srcOut <- fmt.Sprintln(astree)
-	}()
-
-	return srcOut, srcErr, done
+	// TODO(cyphar): Replace with proper unfmt-ing code
+	return fmt.Sprintln(astree), nil
 }
 
 var (
-	oVars       = flag.Bool("fix-vars", false, "'Correct' variable names according to the unfmt spec. -- NYI")
-	oIndent     = flag.Bool("fix-indent", true, "'Correct' indentation according to the unfmt spec. -- NYI")
-	oWhitespace = flag.Bool("fix-whitespace", true, "'Correct' whitespace in control structures according to the unfmt spec. -- NYI")
-	oParameters = flag.Bool("fix-parameters", true, "'Correct' function parameters according to the unfmt spec. -- NYI")
-	oStruct     = flag.Bool("fix-structs", true, "'Correct' struct instantiations according to the unfmt spec. -- NYI")
-	oImports    = flag.Bool("fix-imports", true, "'Correct' imports according to the unfmt spec. -- NYI")
+	oVars       = flag.Bool("vars", false, "'Correct' variable names according to the unfmt spec. -- NYI")
+	oIndent     = flag.Bool("indent", true, "'Correct' indentation according to the unfmt spec. -- NYI")
+	oWhitespace = flag.Bool("whitespace", true, "'Correct' whitespace in control structures according to the unfmt spec. -- NYI")
+	oParameters = flag.Bool("parameters", true, "'Correct' function parameters according to the unfmt spec. -- NYI")
+	oStruct     = flag.Bool("structs", true, "'Correct' struct instantiations according to the unfmt spec. -- NYI")
+	oImports    = flag.Bool("imports", true, "'Correct' imports according to the unfmt spec. -- NYI")
 )
 
 func main() {
 	flag.Parse()
 
 	for _, fname := range flag.Args() {
-		goFile, err := os.Open(fname)
+		f, err := os.Open(fname)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "go unfmt: failed to ruin the source file '%s': %s\n", fname, err.Error())
 			continue
 		}
-		defer goFile.Close()
+		defer f.Close()
 
-		goSrc, err := ioutil.ReadAll(goFile)
+		src, err := ioutil.ReadAll(f)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "go unfmt: failed to read the source file '%s': %s\n", fname, err.Error())
 			continue
 		}
 
-		srcChan, errChan, done := unfmt(goSrc, fname)
-
-		for {
-			select {
-			case srcToken := <-srcChan:
-				// TODO(cyphar): Replace this with proper printing code
-				fmt.Print(srcToken)
-			case err := <-errChan:
-				fmt.Fprintf(os.Stderr, "go unfmt: error encountered while ruining source file '%s': %s\n", fname, err.Error())
-				goto fail
-			case <-done:
-				goto fail
-			}
+		fmtSrc, err := unfmt(src, fname)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "go unfmt: error encountered while ruining source file '%s'.\n", fname)
+			panic(err) // TODO(sysr_q): use log.Fatalf or something.
 		}
 
-		// TODO(cyphar): remove this f*kkin thing.
-		fail:
+		fmt.Println(fmtSrc)
 	}
 }
